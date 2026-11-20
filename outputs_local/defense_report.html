@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>TNBC / FerroSelect — Defence Executive Report v1.1</title>
+<style>
+    @page { size: A4; margin: 16mm; }
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; color: #212529; font-size: 11px;
+           line-height: 1.45; margin: 0 auto; max-width: 980px; padding: 20px 24px;
+           -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    @media print { body { margin: 0; padding: 0; max-width: none; } }
+    h1 { font-size: 22px; margin: 0 0 4px; color: #b3261e; }
+    h2 { font-size: 14px; margin: 20px 0 8px; border-bottom: 2px solid #e9ecef;
+         padding-bottom: 4px; color: #343a40; }
+    h3 { font-size: 12px; margin: 12px 0 6px; color: #495057; }
+    .sub { color: #6c757d; font-size: 11px; }
+    .kpis { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
+    .kpi { border: 1px solid #dee2e6; border-radius: 6px; padding: 8px 10px; min-width: 118px;
+           flex: 1; background: #f8f9fa; }
+    .kpi-v { font-size: 17px; font-weight: 700; color: #212529; }
+    .kpi-l { font-size: 9.5px; color: #6c757d; text-transform: uppercase;
+             letter-spacing: .03em; }
+    table.data { border-collapse: collapse; width: 100%; margin: 6px 0 10px; }
+    table.data th { background: #343a40; color: #fff; text-align: left; padding: 5px 6px;
+                    font-size: 10px; }
+    table.data td { border-bottom: 1px solid #e9ecef; padding: 4px 6px; vertical-align: top; }
+    table.data tr:nth-child(even) td { background: #f8f9fa; }
+    .muted { color: #868e96; font-style: italic; }
+    .bars { margin: 6px 0 10px; }
+    .bar-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+    .bar-label { width: 165px; text-align: right; font-weight: 600; font-size: 10px; }
+    .bar-track { flex: 1; height: 13px; background: #f1f3f5; border-radius: 3px;
+                 overflow: hidden; }
+    .bar-fill { display: block; height: 100%; border-radius: 3px; }
+    .bar-fill.good { background: #b3261e; }
+    .bar-fill.mid { background: #f59f00; }
+    .bar-fill.low { background: #adb5bd; }
+    .bar-val { width: 52px; font-variant-numeric: tabular-nums; font-size: 10px; }
+    .bar-note { width: 150px; font-size: 9px; color: #6c757d; }
+    .callout { border-left: 4px solid #b3261e; background: #fff5f5; padding: 8px 10px;
+               border-radius: 4px; margin: 8px 0; }
+    .note { border-left: 4px solid #1971c2; background: #f1f8ff; padding: 8px 10px;
+            border-radius: 4px; margin: 8px 0; }
+    .ok { color: #2f7d32; font-weight: 700; }
+    .bad { color: #b3261e; font-weight: 700; }
+    .warn { color: #b35c00; font-weight: 700; }
+    .sign { margin-top: 26px; }
+    .sign table { width: 100%; border-collapse: collapse; }
+    .sign td { border: 1px solid #adb5bd; height: 34px; padding: 4px 8px; width: 50%; }
+    .sign .label { border: none; height: auto; color: #6c757d; font-size: 10px;
+                   padding-top: 6px; }
+    footer { margin-top: 22px; border-top: 1px solid #dee2e6; padding-top: 6px;
+             color: #868e96; font-size: 9.5px; }
+    </style></head><body>
+<h1>FerroSelect — TNBC Drug-Response Predictor</h1>
+<div class="sub">Defence executive report · <b>v1.1 dated addendum</b> · generated 2026-11-02 12:05 UTC ·
+model version <b>catboost-v1.0</b></div>
+<div class="callout"><b>Document status.</b> v1.1 (2026-10-29) supersedes the v1.0
+briefing as a dated addendum; it does not rewrite v1.0. The v1.0 artifacts are preserved
+in git at tag <b>v1.0-defense</b> and the sealed prediction is unchanged. The baseline and
+selectivity analyses below are <b>post-hoc, exploratory</b>: the holdout was already seen.
+The v1.0 model-selection winner is reported as a <b>negative result</b>.</div>
+<div class="callout"><b>Scope:</b> predicted sensitivity in cell models — never a
+clinical treatment recommendation. Wet-lab confirmation is the decision layer.</div>
+<div class="kpis"><div class="kpi"><div class="kpi-v">0.630</div><div class="kpi-l">CatBoost per-line Spearman</div></div><div class="kpi"><div class="kpi-v">0.829</div><div class="kpi-l">Per-drug baseline</div></div><div class="kpi"><div class="kpi-v">0.567</div><div class="kpi-l">CatBoost R²</div></div><div class="kpi"><div class="kpi-v">0.825</div><div class="kpi-l">Baseline R²</div></div><div class="kpi"><div class="kpi-v">0.027</div><div class="kpi-l">Selectivity Spearman</div></div><div class="kpi"><div class="kpi-v">41/41</div><div class="kpi-l">Tests</div></div></div>
+
+<h2>1. Dataset, leakage controls and the 76-line correction</h2>
+<p>The DepMap metadata covers <b>96</b> breast lines,
+<b>76</b>
+unique lines with expression, of which <b>30</b> enter
+training on <b>30,994</b> unique (cell line, drug) pairs and
+<b>1,482</b> screened drugs. Subtypes: TNBC
+10, Luminal
+7, HER2+
+4, other
+75.</p>
+<div class="note"><b>v1.1 correction.</b> v1.0 over-counted the expression lines by one. The
+correct count is <b>76 unique lines</b>.
+The shipped PCA table has <b>79</b> rows because MCF7,
+ACH-001396 and ACH-001662 are duplicated. The PCA was fit on
+<b>62</b> rows = <b>60</b>
+unique lines; the PCA holdout is <b>16</b> lines.
+All <b>7</b> ML holdout lines are in the PCA
+holdout and <b>none</b> are in the PCA fit. The phantom-header bug shifted the draw, but
+it did not leak the model holdout.</div>
+<table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th>ModelID</th>
+      <th>Cell line</th>
+      <th>Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ACH-000019</td>
+      <td>MCF7</td>
+      <td>Blind holdout</td>
+    </tr>
+    <tr>
+      <td>ACH-000097</td>
+      <td>ZR751</td>
+      <td>Blind holdout</td>
+    </tr>
+    <tr>
+      <td>ACH-000212</td>
+      <td>CAL120</td>
+      <td>Blind holdout</td>
+    </tr>
+    <tr>
+      <td>ACH-000248</td>
+      <td>AU565</td>
+      <td>Blind holdout</td>
+    </tr>
+    <tr>
+      <td>ACH-000643</td>
+      <td>HDQP1</td>
+      <td>Blind holdout</td>
+    </tr>
+    <tr>
+      <td>ACH-000768</td>
+      <td>MDAMB231</td>
+      <td>Blind holdout</td>
+    </tr>
+    <tr>
+      <td>ACH-000934</td>
+      <td>MDAMB361</td>
+      <td>Blind holdout</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>2. Model vs a one-line baseline (post-hoc, exploratory)</h2>
+<p>The baseline is each drug’s mean AUC on the 23 training lines, applied to the seven
+holdout lines. Drugs with no training row would fall back to the global training mean; in
+this holdout <b>0</b> drugs needed the
+fallback, and both models are scored on the <b>identical 7,336
+rows</b>. The comparison is paired.</p>
+<table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Model</th>
+      <th>Analysis status</th>
+      <th>n</th>
+      <th>MAE</th>
+      <th>RMSE</th>
+      <th>R²</th>
+      <th>Pooled Spearman</th>
+      <th>Per-line Spearman</th>
+      <th>NDCG@10</th>
+      <th>Recall@10</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>CatBoost-800</td>
+      <td>pre-registered holdout</td>
+      <td>7336</td>
+      <td>0.081</td>
+      <td>0.100</td>
+      <td>0.567</td>
+      <td>0.417</td>
+      <td>0.630</td>
+      <td>0.941</td>
+      <td>0.693</td>
+    </tr>
+    <tr>
+      <td>Per-drug mean baseline</td>
+      <td>post-hoc exploratory</td>
+      <td>7336</td>
+      <td>0.044</td>
+      <td>0.064</td>
+      <td>0.825</td>
+      <td>0.845</td>
+      <td>0.829</td>
+      <td>0.945</td>
+      <td>0.746</td>
+    </tr>
+  </tbody>
+</table>
+<p><b>Paired bootstrap over the seven lines</b> (2,000 resamples; the effective sample
+size is lines, not rows):</p>
+<table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Metric</th>
+      <th>Δ mean (CatBoost − baseline)</th>
+      <th>95% CI low</th>
+      <th>95% CI high</th>
+      <th>Baseline better</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Per-line Spearman</td>
+      <td>-0.199</td>
+      <td>-0.250</td>
+      <td>-0.134</td>
+      <td>1.000</td>
+    </tr>
+    <tr>
+      <td>R²</td>
+      <td>-0.257</td>
+      <td>-0.271</td>
+      <td>-0.236</td>
+      <td>1.000</td>
+    </tr>
+    <tr>
+      <td>NDCG@10</td>
+      <td>-0.004</td>
+      <td>-0.014</td>
+      <td>0.007</td>
+      <td>0.764</td>
+    </tr>
+  </tbody>
+</table>
+<p><b>Interpretation.</b> The baseline wins per-line Spearman and R² on every holdout
+line; CatBoost never wins the paired bootstrap. NDCG@10 is statistically tied and is not
+evidence for either model. This shows the <b>architecture fails to beat drug identity</b>;
+it does not prove that expression carries no signal, because the model never learned 85%
+of drug identities. Within the 227 drugs it did learn, it ties the baseline rather than
+beating it.</p>
+<table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Subset</th>
+      <th>n</th>
+      <th>CatBoost per-line</th>
+      <th>Baseline per-line</th>
+      <th>CatBoost R²</th>
+      <th>Baseline R²</th>
+      <th>CatBoost NDCG</th>
+      <th>Baseline NDCG</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>all holdout</td>
+      <td>7336</td>
+      <td>0.630</td>
+      <td>0.829</td>
+      <td>0.567</td>
+      <td>0.825</td>
+      <td>0.941</td>
+      <td>0.945</td>
+    </tr>
+    <tr>
+      <td>learned 227</td>
+      <td>1211</td>
+      <td>0.801</td>
+      <td>0.804</td>
+      <td>-0.028</td>
+      <td>0.680</td>
+      <td>0.941</td>
+      <td>0.945</td>
+    </tr>
+    <tr>
+      <td>measured auc below 0 5</td>
+      <td>286</td>
+      <td>0.632</td>
+      <td>0.615</td>
+      <td>-3.691</td>
+      <td>-0.741</td>
+      <td>0.957</td>
+      <td>0.965</td>
+    </tr>
+    <tr>
+      <td>learned and measured auc below 0 5</td>
+      <td>279</td>
+      <td>0.642</td>
+      <td>0.624</td>
+      <td>-3.250</td>
+      <td>-0.431</td>
+      <td>0.957</td>
+      <td>0.965</td>
+    </tr>
+    <tr>
+      <td>measured auc below 0 3</td>
+      <td>55</td>
+      <td>0.430</td>
+      <td>0.455</td>
+      <td>-10.844</td>
+      <td>-2.967</td>
+      <td>0.986</td>
+      <td>0.987</td>
+    </tr>
+  </tbody>
+</table>
+<table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Subset</th>
+      <th>n</th>
+      <th>Measured mean AUC</th>
+      <th>CatBoost mean</th>
+      <th>Baseline mean</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>all holdout</td>
+      <td>7336</td>
+      <td>0.868</td>
+      <td>0.874</td>
+      <td>0.885</td>
+    </tr>
+    <tr>
+      <td>learned 227</td>
+      <td>1211</td>
+      <td>0.606</td>
+      <td>0.741</td>
+      <td>0.633</td>
+    </tr>
+  </tbody>
+</table>
+<p class="muted">Calibration is descriptive, not a decision rule: the model overpredicts
+AUC on the learned drugs, fixed AUC thresholds (0.3, 0.4) remain unreliable, and the
+calibration is estimated on the spent holdout.</p>
+<p><b>Sensitive-tail coverage.</b> 55 of
+55 measured AUC &lt; 0.3 holdout rows fall
+inside the 227 learned drugs; every line’s measured
+top-10 is 10/10 inside that set. This is <b>coverage</b> — the plateau does not hide the
+actives — not model lift. The baseline covers those drugs trivially.</p>
+<div class="note"><b>Metric definition fix.</b> NDCG@10 uses <b>graded relevance
+1 − AUC</b> (lower AUC = more relevant). Only Recall@10 uses the binary
+<b>AUC &lt; 0.3</b> sensitivity threshold. v1.0's metric note was inaccurate; the
+graded definition above is the one implemented. NDCG is saturated near 0.94 for both
+models and is a weak discriminator.</div>
+
+<h2>3. Selectivity null and the “Predicted selective (unvalidated)” relabel</h2>
+<p>Predicted selectivity Δ = predicted AUC(MCF7) − predicted AUC(MDA-MB-231). Positive
+means the model predicts MDA-selective. Measured Δ uses the same definition on the
+holdout measurements. Across the 1,322 drugs measured in both lines,
+the correlation is essentially zero.</p>
+<table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Analysis</th>
+      <th>n</th>
+      <th>Pearson</th>
+      <th>Spearman</th>
+      <th>Sign agreement</th>
+      <th>Predicted Δ min</th>
+      <th>Predicted Δ max</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>All shared drugs</td>
+      <td>1322</td>
+      <td>0.0025</td>
+      <td>0.0273</td>
+      <td>0.5280</td>
+      <td>-0.0557</td>
+      <td>0.0385</td>
+    </tr>
+    <tr>
+      <td>Learned 227 drugs</td>
+      <td>214</td>
+      <td>-0.0011</td>
+      <td>0.0460</td>
+      <td>0.4953</td>
+      <td>-0.0557</td>
+      <td>0.0385</td>
+    </tr>
+    <tr>
+      <td>Restricted: measured AUC &lt; 0.5 in either line</td>
+      <td>66</td>
+      <td>-0.0179</td>
+      <td>0.0287</td>
+      <td>0.4394</td>
+      <td>-0.0557</td>
+      <td>0.0385</td>
+    </tr>
+  </tbody>
+</table>
+<p>The restricted check — drugs with measured AUC &lt; 0.5 in either line — does not
+rescue the correlation (n=66, Spearman
+0.0287). The learned-227
+subset is also null (Spearman 0.0460).
+The predicted Δ range is -0.0557 to
+0.0385, while the MDA-MB-231 80% interval is
+±0.093: <b>the entire selectivity range is inside the noise band</b>.</p>
+<p><b>The four v1.0 “selective” calls are not supported by the measured holdout data:</b></p>
+<table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Drug</th>
+      <th>Predicted Δ</th>
+      <th>Measured Δ</th>
+      <th>Measured MDA-MB-231 AUC</th>
+      <th>Measured MCF7 AUC</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>DOLASTATIN-10</td>
+      <td>0.0186</td>
+      <td>-0.0236</td>
+      <td>0.2071</td>
+      <td>0.1836</td>
+    </tr>
+    <tr>
+      <td>EXATECAN-MESYLATE</td>
+      <td>0.0151</td>
+      <td>-0.1399</td>
+      <td>0.3412</td>
+      <td>0.2013</td>
+    </tr>
+    <tr>
+      <td>ROMIDEPSIN</td>
+      <td>0.0214</td>
+      <td>-0.0002</td>
+      <td>0.2768</td>
+      <td>0.2766</td>
+    </tr>
+    <tr>
+      <td>TRIPTOLIDE</td>
+      <td>0.0339</td>
+      <td>-0.0339</td>
+      <td>0.1169</td>
+      <td>0.0831</td>
+    </tr>
+  </tbody>
+</table>
+<p>These are relabelled <b>“Predicted selective (unvalidated)”</b> throughout the
+dashboard and this report. They are correct-sign hypotheses to test by
+SI = IC50(MCF7)/IC50(MDA-MB-231) on the plate, not findings. Combination ranks are
+additivity arithmetic: Bliss guarantees a pair out-ranks its components when computed
+from their kill proxies, so a combo rank is not a discovery.</p>
+
+<h2>4. The eight-member wet-lab panel (pre-registered mechanism hypothesis)</h2>
+<table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Rank</th>
+      <th>Panel member</th>
+      <th>Role</th>
+      <th>Predicted AUC (MDA-MB-231)</th>
+      <th>Evidence / note</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>ERASTIN + SIMVASTATIN</td>
+      <td>Combo</td>
+      <td>0.764</td>
+      <td>Bliss additivity arithmetic from the sealed single-agent AUCs; not a synergy finding.</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>SULFASALAZINE + SIMVASTATIN</td>
+      <td>Combo (sealed nomination)</td>
+      <td>0.785</td>
+      <td>Bliss additivity arithmetic from the sealed single-agent AUCs; not a synergy finding.</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>RSL3 + SIMVASTATIN</td>
+      <td>Combo (lab-only lane)</td>
+      <td>—</td>
+      <td>Lab-only: no PRISM AUC for RSL3; test the pair on the plate.</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>ERASTIN</td>
+      <td>Killer (Type I)</td>
+      <td>0.864</td>
+      <td>Sealed single-agent prediction (LOW confidence).</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>SULFASALAZINE</td>
+      <td>Killer (Type I)</td>
+      <td>0.887</td>
+      <td>Sealed single-agent prediction (LOW confidence).</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>RSL3</td>
+      <td>Killer (Type II, GPX4)</td>
+      <td>—</td>
+      <td>No PRISM AUC; GSE247883 signature + CTRPv2 ground truth.</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>N-ACETYLCYSTEINE (NAC)</td>
+      <td>Rescue control</td>
+      <td>—</td>
+      <td>Rescue control: must re-express suppressed proteins.</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>DEFEROXAMINE (DFO)</td>
+      <td>Rescue control</td>
+      <td>—</td>
+      <td>Rescue control: must re-express suppressed proteins.</td>
+    </tr>
+  </tbody>
+</table>
+<p class="muted">Rank 1 = strongest expected killing proxy by the frozen model. The panel was
+selected on mechanism (GPX4, system xc⁻, iron) and agreed with the lab before any plate;
+the model outputs are a frozen, falsifiable record, not the justification. RSL3 lanes are
+lab-only by design: PRISM never profiled RSL3, so no model AUC is fabricated for them.
+Selectivity and panel ordering are hypotheses for the plate.</p>
+
+<h2>5. Top-ranked killers, model resolution and the plateau</h2>
+<div class="bars"><div class="bar-row"><span class="bar-label">TRIPTOLIDE</span><span class="bar-track"><span class="bar-fill good" style="width:72.4%"></span></span><span class="bar-val">0.276</span><span class="bar-note"></span></div><div class="bar-row"><span class="bar-label">DOLASTATIN-10</span><span class="bar-track"><span class="bar-fill mid" style="width:65.1%"></span></span><span class="bar-val">0.349</span><span class="bar-note"></span></div><div class="bar-row"><span class="bar-label">ROMIDEPSIN</span><span class="bar-track"><span class="bar-fill mid" style="width:64.1%"></span></span><span class="bar-val">0.359</span><span class="bar-note"></span></div><div class="bar-row"><span class="bar-label">ECHINOMYCIN</span><span class="bar-track"><span class="bar-fill mid" style="width:62.6%"></span></span><span class="bar-val">0.374</span><span class="bar-note"></span></div><div class="bar-row"><span class="bar-label">EXATECAN-MESYLATE</span><span class="bar-track"><span class="bar-fill mid" style="width:62.2%"></span></span><span class="bar-val">0.378</span><span class="bar-note"></span></div><div class="bar-row"><span class="bar-label">MAYTANSINOL-ISOBUTYRATE</span><span class="bar-track"><span class="bar-fill mid" style="width:59.7%"></span></span><span class="bar-val">0.403</span><span class="bar-note"></span></div><div class="bar-row"><span class="bar-label">SB-743921</span><span class="bar-track"><span class="bar-fill mid" style="width:59.1%"></span></span><span class="bar-val">0.409</span><span class="bar-note"></span></div><div class="bar-row"><span class="bar-label">SN38</span><span class="bar-track"><span class="bar-fill mid" style="width:57.2%"></span></span><span class="bar-val">0.428</span><span class="bar-note"></span></div><div class="bar-row"><span class="bar-label">GEMCITABINE</span><span class="bar-track"><span class="bar-fill mid" style="width:53.6%"></span></span><span class="bar-val">0.464</span><span class="bar-note"></span></div><div class="bar-row"><span class="bar-label">EPOTHILONE-B</span><span class="bar-track"><span class="bar-fill mid" style="width:53.5%"></span></span><span class="bar-val">0.465</span><span class="bar-note"></span></div></div>
+<p class="muted">The predicted-AUC distribution is compressed above ~0.906 for the resistant bulk of the panel; ranks below ~226 are tied within model resolution and should not be read as a fine-grained order. 1,255 of 1,482 drugs (84.7%) carry zero CatBoost importance and collapse to one predicted value per line (0.906574 on MDA-MB-231). Only 227 drugs carry learned signal; the plateau is a documented coverage limit, not a fine-grained ranking.</p>
+
+<h2>6. Bliss combination expectations (additivity arithmetic — test on the plate)</h2>
+<table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Combination</th>
+      <th>Cell line</th>
+      <th>Bliss E_AB</th>
+      <th>Expected AUC</th>
+      <th>Note</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ERASTIN + SIMVASTATIN</td>
+      <td>MDA-MB-231</td>
+      <td>0.236</td>
+      <td>0.764</td>
+      <td>additivity expectation — needs the plate</td>
+    </tr>
+    <tr>
+      <td>ERASTIN + SIMVASTATIN</td>
+      <td>MDA-MB-468</td>
+      <td>0.192</td>
+      <td>0.808</td>
+      <td>additivity expectation — needs the plate</td>
+    </tr>
+    <tr>
+      <td>ERASTIN + SIMVASTATIN</td>
+      <td>MCF7</td>
+      <td>0.151</td>
+      <td>0.849</td>
+      <td>additivity expectation — needs the plate</td>
+    </tr>
+    <tr>
+      <td>SULFASALAZINE + SIMVASTATIN</td>
+      <td>MDA-MB-231</td>
+      <td>0.215</td>
+      <td>0.785</td>
+      <td>additivity expectation — needs the plate</td>
+    </tr>
+    <tr>
+      <td>SULFASALAZINE + SIMVASTATIN</td>
+      <td>MDA-MB-468</td>
+      <td>0.144</td>
+      <td>0.856</td>
+      <td>additivity expectation — needs the plate</td>
+    </tr>
+    <tr>
+      <td>SULFASALAZINE + SIMVASTATIN</td>
+      <td>MCF7</td>
+      <td>0.135</td>
+      <td>0.865</td>
+      <td>additivity expectation — needs the plate</td>
+    </tr>
+    <tr>
+      <td>RSL3 + SIMVASTATIN</td>
+      <td>MDA-MB-231</td>
+      <td>—</td>
+      <td>—</td>
+      <td>not computable (no PRISM AUC for RSL3)</td>
+    </tr>
+    <tr>
+      <td>RSL3 + SIMVASTATIN</td>
+      <td>MDA-MB-468</td>
+      <td>—</td>
+      <td>—</td>
+      <td>not computable (no PRISM AUC for RSL3)</td>
+    </tr>
+    <tr>
+      <td>RSL3 + SIMVASTATIN</td>
+      <td>MCF7</td>
+      <td>—</td>
+      <td>—</td>
+      <td>not computable (no PRISM AUC for RSL3)</td>
+    </tr>
+  </tbody>
+</table>
+<table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th>drugA_name</th>
+      <th>drugB_name</th>
+      <th>E_AB_MDA231</th>
+      <th>E_AB_MCF7</th>
+      <th>selectivity_gap</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>TRIPTOLIDE</td>
+      <td>MAYTANSINOL-ISOBUTYRATE</td>
+      <td>0.889</td>
+      <td>0.864</td>
+      <td>0.025</td>
+    </tr>
+    <tr>
+      <td>MAYTANSINOL-ISOBUTYRATE</td>
+      <td>GEMCITABINE</td>
+      <td>0.813</td>
+      <td>0.789</td>
+      <td>0.024</td>
+    </tr>
+    <tr>
+      <td>ROMIDEPSIN</td>
+      <td>MAYTANSINOL-ISOBUTYRATE</td>
+      <td>0.855</td>
+      <td>0.833</td>
+      <td>0.023</td>
+    </tr>
+    <tr>
+      <td>MAYTANSINOL-ISOBUTYRATE</td>
+      <td>EPOTHILONE-D</td>
+      <td>0.812</td>
+      <td>0.791</td>
+      <td>0.021</td>
+    </tr>
+    <tr>
+      <td>DOLASTATIN-10</td>
+      <td>MAYTANSINOL-ISOBUTYRATE</td>
+      <td>0.859</td>
+      <td>0.839</td>
+      <td>0.021</td>
+    </tr>
+  </tbody>
+</table>
+<p class="muted">These are additivity expectations, not synergy predictions. The 4×4
+checkerboard is the test.</p>
+
+<h2>7. CTRPv2.1 measured ground truth for RSL-3 (external evidence)</h2>
+<table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Cell line</th>
+      <th>RSL-3 raw AUC (CTRPv2)</th>
+      <th>AUC 0-1</th>
+      <th>Percentile most sensitive (of 808)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>MDA-MB-231</td>
+      <td>6.18</td>
+      <td>0.31</td>
+      <td>29.60</td>
+    </tr>
+    <tr>
+      <td>MDA-MB-468</td>
+      <td>10.32</td>
+      <td>0.52</td>
+      <td>76.60</td>
+    </tr>
+    <tr>
+      <td>MCF7</td>
+      <td>11.06</td>
+      <td>0.55</td>
+      <td>82.90</td>
+    </tr>
+  </tbody>
+</table>
+<p class="muted">v21 published: integrated area under the sigmoid-fit concentration-response curve (0-1 viability x ~20 log dose units); LOWER = more death (sensitive)</p>
+<p>RSL-3 v2 model: <b>RandomForest</b>,
+OOF Spearman <b>0.462</b>
+(95% CI 0.401 to
+0.518) on
+788 lines — below the published lab-vs-CTRP ceiling
+(0.830). This is external,
+cross-platform evidence about RSL3, not a validation of the v1.0 PRISM model-selection winner.</p>
+
+<h2>8. Prediction uncertainty (calibrated on the spent holdout)</h2>
+<p>Conformal-style intervals from 7,336 out-of-sample rows:
+<b>±0.104</b> at 80% and
+<b>±0.193</b> at 95% (global half-widths). They are marginal and
+calibrated on the same seven lines, so they are not independent validation.</p>
+<table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th>ModelID</th>
+      <th>n</th>
+      <th>RMSE</th>
+      <th>±80% CI</th>
+      <th>±95% CI</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ACH-000019</td>
+      <td>1360</td>
+      <td>0.095</td>
+      <td>0.101</td>
+      <td>0.178</td>
+    </tr>
+    <tr>
+      <td>ACH-000097</td>
+      <td>1447</td>
+      <td>0.103</td>
+      <td>0.102</td>
+      <td>0.200</td>
+    </tr>
+    <tr>
+      <td>ACH-000212</td>
+      <td>1351</td>
+      <td>0.099</td>
+      <td>0.104</td>
+      <td>0.190</td>
+    </tr>
+    <tr>
+      <td>ACH-000248</td>
+      <td>152</td>
+      <td>0.108</td>
+      <td>0.120</td>
+      <td>0.225</td>
+    </tr>
+    <tr>
+      <td>ACH-000643</td>
+      <td>1438</td>
+      <td>0.107</td>
+      <td>0.105</td>
+      <td>0.211</td>
+    </tr>
+    <tr>
+      <td>ACH-000768</td>
+      <td>1396</td>
+      <td>0.097</td>
+      <td>0.093</td>
+      <td>0.186</td>
+    </tr>
+    <tr>
+      <td>ACH-000934</td>
+      <td>192</td>
+      <td>0.085</td>
+      <td>0.097</td>
+      <td>0.155</td>
+    </tr>
+  </tbody>
+</table>
+<p class="muted">FerroSelect frozen model (RandomForest,
+64 panel rows): pooled OOF Spearman
+0.195 with bootstrap CI
+-0.063 to
+0.427. This is an honestly low,
+pre-registered hypothesis — the plate decides.</p>
+
+<h2>9. Pre-registered diagnostic (post-hoc, exploratory)</h2>
+<p>The diagnostic uses only the <b>23 training lines</b> (holdout excluded) with strict
+<b>GroupKFold(5)</b>: per-drug means, PCA scaling, the RidgeCV line-offset fit and the M2
+neighbour pool all use fold-training lines only. It is exploratory and is not comparable to
+holdout metrics. Pre-registered settings: k=5, M1 uses 62 PCA features, M2 uses the first
+10 PCs, bootstrap seed 42 with 2,000 resamples.</p>
+<table class="dataframe data">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Model</th>
+      <th>Per-line Spearman</th>
+      <th>Pooled R² vs measured AUC</th>
+      <th>MAE vs measured AUC</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>M0: Fold-training per-drug mean</td>
+      <td>0.8199</td>
+      <td>0.7756</td>
+      <td>0.0471</td>
+    </tr>
+    <tr>
+      <td>M1: M0 + fitted RidgeCV line offset (62 PCs)</td>
+      <td>0.8199</td>
+      <td>0.7763</td>
+      <td>0.0480</td>
+    </tr>
+    <tr>
+      <td>M2: M0 + kNN M0-residual adjustment (first 10 PCs)</td>
+      <td>0.7928</td>
+      <td>0.7550</td>
+      <td>0.0491</td>
+    </tr>
+  </tbody>
+</table>
+<p>M1’s per-line Spearman equals M0 by construction because its fitted RidgeCV offset is
+constant within a held-out line, while its pooled R²/MAE are fitted values, not copies of M0.
+The paired M1−M0 difference is <b>0.0000</b>
+(95% CI 0.0000 to 0.0000). The paired M2−M0 difference is
+<b>-0.0270</b>
+(95% CI -0.0373 to -0.0176): <b>M2 does not beat M0</b>, so
+the pre-registered success criterion (95% CI above zero) is not met. This is no evidence of
+expression signal, not proof of absence. M3 was skipped for runtime.</p>
+<div class="note"><b>v1.2.5 construction fix and v1.2.6 preregistration alignment (transparent changelog).</b> The v1.2.4
+diagnostic had four construction defects found in audit: a line-rank value was used as a row
+index into the drug-line matrix (3/23 mappings correct, zero-distance duplicates); M2
+borrowed a within-line-centred AUC instead of the M0 residual; there was no GroupKFold
+isolation; and M1 was never fitted. v1.2.5 corrects the construction. v1.2.6 restores M1's
+pre-registered 62 PCA features while M2 keeps the pre-registered first 10 PCs. k=5,
+GroupKFold(5), bootstrap seed 42 with 2,000 resamples and the success criterion are
+unchanged. Audit: 23/
+23 unique line rows,
+0 zero-distance distinct-line pairs,
+0 same-fold neighbours, target line absent
+from every M0 source, and zero-weight M2 = M0 exactly (max|Δ| =
+0.000000). The statistic is corrected; M2 is no longer
+withdrawn. A read-only verifier (<code>python tools/audit_diagnostic.py</code>) re-checks
+these invariants and exits 0. Superseded v1.2.4 outputs are archived
+at <code>outputs_local/archive/diagnostic_results_v1.2.4_MISCONSTRUCTED.*</code>.</div>
+
+<h2>10. Validation gates, provenance quarantine and test status</h2>
+<table class="data"><tr><th>Gate</th><th>Value</th><th>Target</th><th>Status</th></tr>
+<tr><td>R² &gt; 0.25 (CatBoost)</td><td>0.567</td><td>0.250</td><td class="ok">PASS</td></tr><tr><td>Per-line Spearman &gt; 0.40 (CatBoost)</td><td>0.630</td><td>0.400</td><td class="ok">PASS</td></tr><tr><td>Post-hoc baseline beats CatBoost (per-line Spearman)</td><td>0.829</td><td>—</td><td class="warn">REPORTED</td></tr><tr><td>Selectivity predicted-vs-measured correlation</td><td>0.027</td><td>—</td><td class="bad">NULL</td></tr><tr><td>Selectivity rule (relabelled)</td><td colspan="3">pred_AUC_MDA231 &lt; 0.4 AND selectivity_delta &gt; 0.0 (26 positive-Δ drugs of 1,482); the old fixed cut-off Δ &gt; 0.05 was unreachable (max Δ = 0.039)</td></tr><tr><td>PCA gene annotation</td><td colspan="3">PUBLISHED - verified against the shipped scores — 61 of 62 components verified</td></tr><tr><td>Automated test suite</td><td>41/41</td><td>all pass</td><td class="ok">PASS</td></tr></table><p><b>Provenance quarantine.</b> The legacy L1000 matcher resolved the
+abbreviation “NAC” inside “Solife<b>NAC</b>in-Succinate”, so the archived NAC rows are a
+different molecule. The data layer now carries a <b>quarantined</b> column in
+<code>offtarget_panel_map.csv</code>, <code>offtarget_rescue_reversal.csv</code>,
+<code>protein_array_shortlist.csv</code> and
+<code>offtarget_coverage_ferroselect.csv</code>. The UI withholds the NAC rescue arm and
+the tests assert the marker. Deferoxamine is the validated rescue arm; Erastin’s
+latent substring collision with Cloperastine is blocked by exact-match-first resolution
+and a regression test. The wet-lab NAC molecule is unaffected.</p>
+
+<h2>11. Sign-off (print, sign, lodge with the sealed prediction)</h2>
+<div class="sign"><table>
+<tr><td class="label">Computational lead</td><td class="label">Supervisor</td></tr>
+<tr><td></td><td></td></tr>
+<tr><td class="label">Date</td><td class="label">Date</td></tr>
+</table></div>
+
+<h2>Appendix A. v1.1 changelog</h2>
+<table class="data">
+<tr><th>Change</th><th>Where</th></tr>
+<tr><td>Per-drug mean baseline beside CatBoost; paired line bootstrap; subset and
+calibration tables</td><td>§2, dashboard Model &amp; audit, <code>baseline_audit.*</code></td></tr>
+<tr><td>Selectivity null (all shared, learned 227, restricted AUC &lt; 0.5 either) and
+the four unsupported calls</td><td>§3, dashboard Selectivity, <code>baseline_audit.json</code></td></tr>
+<tr><td>“Selective” relabelled “Predicted selective (unvalidated)”</td><td>Dashboard,
+§3</td></tr>
+<tr><td>NDCG@10 definition corrected to graded relevance 1 − AUC; only Recall@10 is
+binary AUC &lt; 0.3</td><td>§2, README</td></tr>
+<tr><td>Expression-line count corrected from 77 to 76 unique; 79 rows / 3 duplicate
+ModelIDs explained</td><td>§1, <code>audit_summary.json</code>,
+<code>expression_line_audit.json</code></td></tr>
+<tr><td><code>quarantined</code> column added to the four legacy NAC CSVs; Erastin /
+Cloperastine regression test</td><td>Data layer, tests</td></tr>
+<tr><td>Four API tests brought the suite from 33 to 37; four diagnostic construction
+tests brought it from 37 to 41; count reported from
+<code>validation_status.json</code></td><td>§10, tests</td></tr>
+<tr><td>v1.2.5 fold-honest diagnostic construction fix; v1.2.6 restores M1's
+pre-registered 62 PCA features (M2 remains first 10), strict GroupKFold(5), fitted
+RidgeCV M1, M0-residual M2; M2 still does not beat M0 (paired 95% CI
+[−0.0373, −0.0176])</td><td>§9, dashboard diagnostic panel,
+<code>diagnostic_results.*</code></td></tr>
+</table>
+
+<h2>Appendix B. Short defence Q&amp;A</h2>
+<p><b>Q1. “Your CatBoost model loses to a column mean. Why is it in the project?”</b><br>
+It is reported as a negative result. The baseline wins because CatBoost never learned 85%
+of drug identities. Within the 227 drugs it did learn, it ties the baseline. The expression
+contribution is unproven, and we say so. The project’s value is the audit that found this,
+not the model.</p>
+<p><b>Q2. “Did the sealed prediction or the ‘selective’ labels rely on this model?”</b><br>
+The panel was chosen on mechanism (GPX4, system xc⁻, iron) and agreed with the lab before
+any plate. The model outputs are a frozen, falsifiable record, not the justification.
+Predicted selectivity is uncorrelated with measured selectivity, so the four “selective”
+drugs are relabelled unvalidated hypotheses. Selectivity will be tested by
+SI = IC50(MCF7)/IC50(MDA-MB-231) on the plate. We will report Spearman with a bootstrap CI
+after unblinding, as the PRD requires.</p>
+<p><b>Q3. “If the model is this weak, what is the scientific contribution?”</b><br>
+A reproducible pipeline whose own controls caught its failures: a circular-label inflation
+of 0.65–0.99, a substring bug that would have mislabelled Solifenacin as NAC, an 84.7%
+plateau, and a dead selectivity threshold. We found them, bounded them and tested the
+fixes. We also pre-registered a falsifiable wet-lab panel, with CTRPv2 showing MDA-MB-231
+in the most RSL3-sensitive 30% while MDA-MB-468 is resistant.</p>
+
+<footer>Artifacts: outputs_local/ · splits by cell line · fixed seed 42 · pinned
+requirements.txt · prediction intervals calibrated on pre-registered holdout lines.
+Report generated automatically from the committed artifacts; no values are typed by hand.
+v1.1 addendum, 2026-10-29. v1.0 artifacts preserved at tag v1.0-defense.</footer>
+</body></html>

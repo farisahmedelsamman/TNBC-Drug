@@ -1,0 +1,21 @@
+# TNBC drug-response platform — frozen working set (local env + Colab compatible)
+# Install:  pip install -r requirements.txt
+pandas==2.2.3
+numpy>=2.0
+scikit-learn==1.6.1
+scipy==1.17.1
+xgboost==2.0.3
+catboost==1.2.10
+matplotlib==3.11.2
+# NOTE: shap is intentionally NOT pinned here. Its metadata requires numpy>=2,
+# which conflicts with this frozen numpy>=2.0 set (uv resolver fails hard).
+# Nothing committed imports shap at runtime (dashboard/API/tests don't use it);
+# the training notebooks install it themselves in their setup cells.
+fastapi==0.115.0
+uvicorn==0.30.6
+starlette==0.38.6
+streamlit==1.39.0
+pytest==8.2.2
+plotly==5.9.0
+networkx>=3.6.1
+joblib>=1.2.0

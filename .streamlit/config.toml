@@ -1,0 +1,9 @@
+# Dark theme is forced for all viewers (defense-demo consistency).
+
+[theme]
+base = "dark"
+primaryColor = "#3B5BDB"
+font = "sans serif"
+
+[client]
+toolbarMode = "viewer"   # hides the Deploy button for lab users
